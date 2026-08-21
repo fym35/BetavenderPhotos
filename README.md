@@ -1,3 +1,13 @@
+# Betavendr Photos
+
+This is a continuation of Lavender Photos 0.9.9-beta, the last version with the old UI
+
+It does a few things that were missing/broken in that version - that includes
+ - An intent to open an external video editor on Video's edit button
+   - No full video editor, sorry :(
+ - Fixes a crash on the Edit button when opening a single photo
+ - Shows longer filenames before capping them with "..."
+
 # Lavender Photos!
 This is Lavender Photos, a no non-sense, smooth, and performant gallery app for Android!
 
