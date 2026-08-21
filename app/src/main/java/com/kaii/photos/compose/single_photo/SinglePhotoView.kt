@@ -408,7 +408,7 @@ private fun TopBar(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .width(if (isLandscape) 300.dp else 160.dp)
+                        .width(if (isLandscape) 400.dp else 280.dp)
                 )
             },
             actions = {

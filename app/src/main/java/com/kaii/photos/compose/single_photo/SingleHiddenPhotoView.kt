@@ -314,7 +314,7 @@ private fun TopBar(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .width(160.dp)
+                        .width(280.dp)
                 )
             },
             actions = {
