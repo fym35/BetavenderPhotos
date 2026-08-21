@@ -92,6 +92,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.net.toUri
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.navigation.compose.NavHost
@@ -104,6 +107,7 @@ import com.bumptech.glide.integration.compose.placeholder
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.signature.ObjectKey
 import com.kaii.photos.BuildConfig
+import com.kaii.photos.LocalMainViewModel
 import com.kaii.photos.LocalNavController
 import com.kaii.photos.R
 import com.kaii.photos.compose.app_bars.BottomAppBarItem
@@ -116,6 +120,7 @@ import com.kaii.photos.helpers.Screens
 import com.kaii.photos.helpers.shareImage
 import com.kaii.photos.mediastore.MediaType
 import com.kaii.photos.mediastore.copyUriToUri
+import com.kaii.photos.models.main_activity.MainViewModel
 import com.kaii.photos.models.multi_album.DisplayDateFormat
 import com.kaii.photos.models.multi_album.formatDate
 import com.kaii.photos.ui.theme.PhotosTheme
@@ -161,8 +166,18 @@ class OpenWithView : ComponentActivity() {
                 dynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             ) {
                 val navController = rememberNavController()
+                val mainViewModel: MainViewModel = viewModel(
+                    factory = viewModelFactory {
+                        initializer {
+                            MainViewModel(applicationContext)
+                        }
+                    }
+                )
 
-                CompositionLocalProvider(LocalNavController provides navController) {
+                CompositionLocalProvider(
+                    LocalNavController provides navController,
+                    LocalMainViewModel provides mainViewModel)
+                {
                     NavHost(
                         navController = navController,
                         startDestination = MultiScreenViewType.OpenWithView.name,
