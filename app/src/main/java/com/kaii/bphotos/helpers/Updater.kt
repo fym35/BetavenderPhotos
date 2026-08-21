@@ -50,7 +50,7 @@ class Updater(
     }
 
     private val updateFile by derivedStateOf {
-        val file = File(context.appStorageDir, "photos_signed_release_${githubVersionName.value}.apk")
+        val file = File(context.appStorageDir, "photos_${githubVersionName.value}.apk")
         file.parentFile?.mkdirs()
         file
     }
@@ -76,7 +76,7 @@ class Updater(
     	coroutineScope.launch(Dispatchers.IO) {
     		async {
     			onRefresh(CheckUpdateState.Checking)
-		        val url = "https://api.github.com/repos/kaii-lb/LavenderPhotos/releases/latest"
+		        val url = "https://api.github.com/repos/fym35/BetavenderPhotos/releases/latest"
 
 		        val body = try {
 		        	Fuel.get(url).responseJson().third.fold(
