@@ -1,4 +1,4 @@
-# Betavendr Photos
+# Betavender Photos
 
 This is a continuation of Lavender Photos 0.9.9-beta, the last version with the old UI
 
