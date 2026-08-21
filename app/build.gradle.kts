@@ -9,12 +9,11 @@ plugins {
 }
 
 android {
-    namespace = "com.kaii.photos"
+    namespace = "com.kaii.bphotos"
     compileSdk = 35
 
-
     defaultConfig {
-        applicationId = "com.kaii.photos"
+        applicationId = "com.kaii.bphotos"
         minSdk = 30
         targetSdk = 35
         versionCode = 99
