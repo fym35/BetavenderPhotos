@@ -66,7 +66,7 @@
             android:exported="true"
             android:theme="@style/Theme.Photos">
 
-            <intent-filter android:label="Open with Lavender Photos">
+            <intent-filter android:label="Open with Betavender Photos">
                 <category android:name="android.intent.category.DEFAULT" />
 
                 <action android:name="android.intent.action.VIEW" />
@@ -75,7 +75,7 @@
                 <data android:mimeType="video/*" />
                 <data android:scheme="content" />
             </intent-filter>
-            <intent-filter android:label="Edit with Lavender Photos">
+            <intent-filter android:label="Edit with Betavender Photos">
                 <category android:name="android.intent.category.DEFAULT" />
 
                 <action android:name="android.intent.action.EDIT" />
@@ -86,7 +86,7 @@
         </activity>
         
         <activity
-            android:label="Lavender Photos"
+            android:label="Betavender Photos"
             android:name=".compose.media_picker.MediaPicker"
             android:configChanges="orientation|screenSize|density|screenLayout"
             android:exported="true"

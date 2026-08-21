@@ -185,7 +185,7 @@ fun PermissionHandler(
 
                             PermissionButton(
                                 name = "Read Images",
-                                description = "Allow Lavender Photos to discover photos on the device",
+                                description = "Allow Betavender Photos to discover photos on the device",
                                 position = RowPosition.Top,
                                 granted = !mainViewModel.permissionQueue.contains(Manifest.permission.READ_MEDIA_IMAGES)
                             ) {
@@ -232,7 +232,7 @@ fun PermissionHandler(
 
                             PermissionButton(
                                 name = "Read Videos",
-                                description = "Allow Lavender Photos to discover videos on the device",
+                                description = "Allow Betavender Photos to discover videos on the device",
                                 position = RowPosition.Middle,
                                 granted = !mainViewModel.permissionQueue.contains(Manifest.permission.READ_MEDIA_VIDEO)
                             ) {
