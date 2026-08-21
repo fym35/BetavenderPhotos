@@ -1,6 +1,7 @@
 package com.kaii.photos.compose.single_photo
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.res.Configuration
 import android.util.Log
 import android.view.Window
@@ -522,16 +523,6 @@ private fun BottomBar(
                         }
                     )
 
-                    val showNotImplementedDialog = remember { mutableStateOf(false) }
-
-                    if (showNotImplementedDialog.value) {
-                        ExplanationDialog(
-                            title = stringResource(id = R.string.feature_unimplemented),
-                            explanation = stringResource(id = R.string.feature_editing_unimplemented, BuildConfig.VERSION_NAME),
-                            showDialog = showNotImplementedDialog
-                        )
-                    }
-
                     BottomAppBarItem(
                         text = "Edit",
                         iconResId = R.drawable.paintbrush,
@@ -539,7 +530,13 @@ private fun BottomBar(
                         action = if (currentItem.type == MediaType.Image) {
                             showEditingView
                         } else {
-                            { showNotImplementedDialog.value = true }
+                            {
+                                val intent = Intent(Intent.ACTION_EDIT).apply {
+                                    setDataAndType(currentItem.uri, "video/*")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(intent)
+                            }
                         }
                     )
 
