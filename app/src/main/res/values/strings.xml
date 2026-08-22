@@ -73,16 +73,16 @@
     <string name="dev_title">Developer</string>
     <string name="privacy_policy_title">Privacy Policy</string>
     <string name="privacy_policy">There isn\'t one! None of your data goes anywhere but this device. No AI is trained on it, no algorithms to harvest information, nothing. Betavender Photos has and always will be a privacy focused gallery app.</string>
-    <string name="i_swear_were_not_bad">we really don\'t use your data</string>
+    <string name="i_swear_were_not_bad">We really don\'t use your data</string>
     <string name="support">Support &amp; Donations</string>
-    <string name="support_desc">help me keep the app alive</string>
+    <string name="support_desc">Help me keep the app alive</string>
     <string name="version_info">Version Info</string>
     <string name="translation">Translation</string>
-    <string name="translation_desc">bring Betavender Photos worldwide!</string>
+    <string name="translation_desc">Bring Betavender Photos worldwide!</string>
 
     <!-- Updates -->
     <string name="updates">Updates</string>
-    <string name="updates_desc">keep the app up to date</string>
+    <string name="updates_desc">Keep the app up to date</string>
     <string name="updates_check">Check for Updates</string>
     <string name="updates_check_desc">Notifies of new version when you open the app. Does not auto-install the update</string>
     <string name="updates_whats_new">What\'s new</string>
