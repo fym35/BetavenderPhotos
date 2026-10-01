@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kaii.bphotos.LocalMainViewModel
@@ -112,6 +113,8 @@ fun BottomAppBarItem(
             text = text,
             fontSize = TextUnit(textSize, TextUnitType.Sp),
             color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .wrapContentSize()
                 .align(Alignment.BottomCenter)

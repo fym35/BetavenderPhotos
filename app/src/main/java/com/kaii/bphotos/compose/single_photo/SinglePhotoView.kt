@@ -517,6 +517,22 @@ private fun BottomBar(
                         }
                     )
 
+                    if (currentItem.type == MediaType.Video) {
+                        BottomAppBarItem(
+                            text = "Open in",
+                            iconResId = R.drawable.movie_filled,
+                            cornerRadius = 32.dp,
+                            action = {
+                                val mimeType = currentItem.mimeType ?: "video/*"
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(currentItem.uri, mimeType)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Open with..."))
+                            }
+                        )
+                    }
+
                     val showDeleteDialog = remember { mutableStateOf(false) }
                     val runTrashAction = remember { mutableStateOf(false) }
 
