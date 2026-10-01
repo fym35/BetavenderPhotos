@@ -360,7 +360,6 @@ fun EditingView(
                 oldChangesSize = oldChangesSize,
                 overwrite = overwrite,
                 canExit = canExit,
-                isOpenWith = isOpenWith,
                 saveImage = {
                     runSaveEditsAction.value = true
                 },
@@ -1477,7 +1476,6 @@ private fun EditingViewTopBar(
     oldChangesSize: MutableIntState,
     overwrite: MutableState<Boolean>,
     canExit: MutableState<Boolean>,
-    isOpenWith: Boolean,
     saveImage: () -> Unit,
     popBackStack: () -> Unit,
 ) {
@@ -1590,9 +1588,7 @@ private fun EditingViewTopBar(
                     SplitButton(
                         enabled = changesSize.intValue != oldChangesSize.intValue,
                         secondaryContentMaxWidth = 40.dp,
-                        secondaryContainerColor =
-                            if (!isOpenWith) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.surfaceContainer,
+                        secondaryContainerColor = MaterialTheme.colorScheme.primary,
                         primaryContent = {
                             Text(
                                 text = saveButtonTitle,
@@ -1602,7 +1598,7 @@ private fun EditingViewTopBar(
                         },
                         primaryAction = saveAction,
                         secondaryAction = {
-                            if (!isOpenWith) dropDownExpanded = !dropDownExpanded
+                            dropDownExpanded = !dropDownExpanded
                         },
                         secondaryContent = {
                             Icon(
@@ -1634,7 +1630,6 @@ private fun EditingViewTopBar(
                         ) {
                             dropDownExpanded = false
                             overwrite.value = true
-                            saveAction()
                         }
 
                         SelectableDropDownMenuItem(
@@ -1644,7 +1639,6 @@ private fun EditingViewTopBar(
                         ) {
                             dropDownExpanded = false
                             overwrite.value = false
-                            saveAction()
                         }
                     }
                 }

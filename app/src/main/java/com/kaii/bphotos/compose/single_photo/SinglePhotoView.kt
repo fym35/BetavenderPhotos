@@ -78,6 +78,9 @@ import com.kaii.bphotos.helpers.moveImageToLockedFolder
 import com.kaii.bphotos.helpers.rememberVibratorManager
 import com.kaii.bphotos.helpers.setTrashedOnPhotoList
 import com.kaii.bphotos.helpers.shareImage
+import com.kaii.bphotos.compose.single_photo.EXTRA_EDIT_ABSOLUTE_PATH
+import com.kaii.bphotos.compose.single_photo.EXTRA_EDIT_DATE_TAKEN
+import com.kaii.bphotos.compose.single_photo.EXTRA_INTERNAL_EDIT
 import com.kaii.bphotos.helpers.toRelativePath
 import com.kaii.bphotos.helpers.vibrateShort
 import com.kaii.bphotos.mediastore.MediaStoreData
@@ -512,6 +515,9 @@ private fun BottomBar(
                             val intent = Intent(Intent.ACTION_EDIT).apply {
                                 setDataAndType(currentItem.uri, mimeType)
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                putExtra(EXTRA_INTERNAL_EDIT, true)
+                                putExtra(EXTRA_EDIT_ABSOLUTE_PATH, currentItem.absolutePath)
+                                putExtra(EXTRA_EDIT_DATE_TAKEN, currentItem.dateTaken)
                             }
                             context.startActivity(Intent.createChooser(intent, context.getString(R.string.edit)))
                         }

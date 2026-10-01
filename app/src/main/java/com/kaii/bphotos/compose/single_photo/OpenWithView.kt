@@ -94,6 +94,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.net.toUri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -117,8 +118,10 @@ import com.kaii.bphotos.compose.app_bars.setBarVisibility
 import com.kaii.bphotos.compose.dialogs.ExplanationDialog
 import com.kaii.bphotos.compose.rememberDeviceOrientation
 import com.kaii.bphotos.helpers.MediaItemSortMode
+import com.kaii.bphotos.helpers.baseInternalStorageDirectory
 import com.kaii.bphotos.helpers.MultiScreenViewType
 import com.kaii.bphotos.helpers.Screens
+import com.kaii.bphotos.datastore.Editing
 import com.kaii.bphotos.helpers.shareImage
 import com.kaii.bphotos.mediastore.MediaType
 import com.kaii.bphotos.mediastore.copyUriToUri
@@ -131,6 +134,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import java.io.File
+
+const val EXTRA_INTERNAL_EDIT = "com.kaii.bphotos.extra.INTERNAL_EDIT"
+const val EXTRA_EDIT_ABSOLUTE_PATH = "com.kaii.bphotos.extra.ABSOLUTE_PATH"
+const val EXTRA_EDIT_DATE_TAKEN = "com.kaii.bphotos.extra.DATE_TAKEN"
 
 class OpenWithView : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -146,6 +153,11 @@ class OpenWithView : ComponentActivity() {
 
         val mimeType = contentResolver.getType(uri) ?: "image/*"
         val isDirectEdit = intent?.action == Intent.ACTION_EDIT && mimeType.contains("image")
+        val internalAbsolutePath =
+            if (isDirectEdit && intent?.getBooleanExtra(EXTRA_INTERNAL_EDIT, false) == true) {
+                intent?.getStringExtra(EXTRA_EDIT_ABSOLUTE_PATH)
+            } else null
+        val internalDateTaken = intent?.getLongExtra(EXTRA_EDIT_DATE_TAKEN, 0L) ?: 0L
 
         setContent {
             enableEdgeToEdge(
@@ -193,6 +205,8 @@ class OpenWithView : ComponentActivity() {
                             uri = uri,
                             mimeType = mimeType,
                             window = window,
+                            internalAbsolutePath = internalAbsolutePath,
+                            internalDateTaken = internalDateTaken,
                             onExit = { finish() },
                             onFailure = { directEditFailed = true }
                         )
@@ -285,14 +299,33 @@ private fun DirectEditContent(
     uri: Uri,
     mimeType: String,
     window: Window,
+    internalAbsolutePath: String?,
+    internalDateTaken: Long,
     onExit: () -> Unit,
     onFailure: () -> Unit
 ) {
     val context = LocalContext.current
+    val mainViewModel = LocalMainViewModel.current
+    val overwriteByDefault by mainViewModel.settings.Editing.getOverwriteByDefault()
+        .collectAsStateWithLifecycle(initialValue = false)
 
-    var editTarget by remember { mutableStateOf<Screens.EditingScreen?>(null) }
+    val isInternalRoundTrip = internalAbsolutePath != null
+
+    var editTarget by remember {
+        mutableStateOf(
+            if (isInternalRoundTrip) {
+                Screens.EditingScreen(
+                    absolutePath = internalAbsolutePath,
+                    uri = uri.toString(),
+                    dateTaken = internalDateTaken
+                )
+            } else null
+        )
+    }
 
     LaunchedEffect(uri) {
+        if (editTarget != null) return@LaunchedEffect
+
         val target = withContext(Dispatchers.IO) {
             createEditableImageCopy(
                 context = context,
@@ -320,8 +353,8 @@ private fun DirectEditContent(
             dateTaken = screen.dateTaken,
             uri = screen.uri.toUri(),
             window = window,
-            overwriteByDefault = false,
-            isOpenWith = true,
+            overwriteByDefault = if (isInternalRoundTrip) overwriteByDefault else false,
+            isOpenWith = !isInternalRoundTrip,
             onExit = onExit
         )
     } else {
@@ -1003,7 +1036,8 @@ private fun createEditableImageCopy(
         format = DisplayDateFormat.Default
     )
     val name = context.resources.getString(R.string.edit_desc, "$date.$extension")
-    val destination = File(Environment.DIRECTORY_PICTURES, name) // TODO: maybe move into subdir?
+    // must be a real absolute path: saveToFile() derives the save-copy destination from it
+    val destination = File(baseInternalStorageDirectory + Environment.DIRECTORY_PICTURES, name) // TODO: maybe move into subdir?
 
     val contentValues = ContentValues().apply {
         put(MediaColumns.DISPLAY_NAME, name)
