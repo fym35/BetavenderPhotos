@@ -213,8 +213,10 @@ fun EditingView(
     window: Window,
     overwriteByDefault: Boolean,
     isOpenWith: Boolean = false,
+    onExit: (() -> Unit)? = null,
 ) {
     val navController = LocalNavController.current
+    val exitView = onExit ?: { navController.popBackStack() }
     val showCloseDialog = remember { mutableStateOf(false) }
     val showBackClickCloseDialog = remember { mutableStateOf(false) }
     val changesSize = remember { mutableIntStateOf(0) }
@@ -225,7 +227,7 @@ fun EditingView(
         dialogTitle = stringResource(id = R.string.editing_discard_desc),
         confirmButtonLabel = stringResource(id = R.string.editing_discard)
     ) {
-        navController.popBackStack()
+        exitView()
     }
 
     ConfirmationDialog(
@@ -233,7 +235,7 @@ fun EditingView(
         dialogTitle = stringResource(id = R.string.editing_exit_desc),
         confirmButtonLabel = stringResource(id = R.string.editing_exit)
     ) {
-        navController.popBackStack()
+        exitView()
     }
 
     BackHandler {
@@ -363,7 +365,7 @@ fun EditingView(
                     runSaveEditsAction.value = true
                 },
                 popBackStack = {
-                    navController.popBackStack()
+                    exitView()
                 }
             )
         },

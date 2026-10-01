@@ -58,6 +58,7 @@ import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -143,7 +144,8 @@ class OpenWithView : ComponentActivity() {
             return
         }
 
-        val isEditAction = intent?.action == Intent.ACTION_EDIT
+        val mimeType = contentResolver.getType(uri) ?: "image/*"
+        val isDirectEdit = intent?.action == Intent.ACTION_EDIT && mimeType.contains("image")
 
         setContent {
             enableEdgeToEdge(
@@ -180,10 +182,21 @@ class OpenWithView : ComponentActivity() {
                     }
                 )
 
+                var directEditFailed by remember { mutableStateOf(false) }
+
                 CompositionLocalProvider(
                     LocalNavController provides navController,
                     LocalMainViewModel provides mainViewModel)
                 {
+                    if (isDirectEdit && !directEditFailed) {
+                        DirectEditContent(
+                            uri = uri,
+                            mimeType = mimeType,
+                            window = window,
+                            onExit = { finish() },
+                            onFailure = { directEditFailed = true }
+                        )
+                    } else {
                     NavHost(
                         navController = navController,
                         startDestination = MultiScreenViewType.OpenWithView.name,
@@ -235,8 +248,7 @@ class OpenWithView : ComponentActivity() {
 
                             Content(
                                 uri = uri,
-                                window = window,
-                                isEditIntent = isEditAction
+                                window = window
                             )
                         }
 
@@ -261,8 +273,65 @@ class OpenWithView : ComponentActivity() {
                             )
                         }
                     }
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DirectEditContent(
+    uri: Uri,
+    mimeType: String,
+    window: Window,
+    onExit: () -> Unit,
+    onFailure: () -> Unit
+) {
+    val context = LocalContext.current
+
+    var editTarget by remember { mutableStateOf<Screens.EditingScreen?>(null) }
+
+    LaunchedEffect(uri) {
+        val target = withContext(Dispatchers.IO) {
+            createEditableImageCopy(
+                context = context,
+                sourceUri = uri,
+                mimeType = mimeType
+            )
+        }
+
+        if (target != null) editTarget = target
+        else onFailure()
+    }
+
+    val screen = editTarget
+    if (screen != null) {
+        (context as ComponentActivity).enableEdgeToEdge(
+            navigationBarStyle = SystemBarStyle.dark(MaterialTheme.colorScheme.surfaceContainer.toArgb()),
+            statusBarStyle = SystemBarStyle.auto(
+                MaterialTheme.colorScheme.surfaceContainer.toArgb(),
+                MaterialTheme.colorScheme.surfaceContainer.toArgb()
+            )
+        )
+
+        EditingView(
+            absolutePath = screen.absolutePath,
+            dateTaken = screen.dateTaken,
+            uri = screen.uri.toUri(),
+            window = window,
+            overwriteByDefault = false,
+            isOpenWith = true,
+            onExit = onExit
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize(1f)
+                .background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
         }
     }
 }
@@ -272,12 +341,10 @@ class OpenWithView : ComponentActivity() {
 @Composable
 private fun Content(
     uri: Uri,
-    window: Window,
-    isEditIntent: Boolean = false
+    window: Window
 ) {
     val appBarsVisible = remember { mutableStateOf(true) }
     val context = LocalContext.current
-    val navController = LocalNavController.current
 
     val releaseExoPlayer: MutableState<() -> Unit> = remember { mutableStateOf({}) }
 
@@ -285,32 +352,6 @@ private fun Content(
     val type =
         if (mimeType.contains("image")) MediaType.Image
         else MediaType.Video
-
-    val editAutoTriggered = rememberSaveable { mutableStateOf(false) }
-    if (isEditIntent && type == MediaType.Image && !editAutoTriggered.value) {
-        LaunchedEffect(uri) {
-            editAutoTriggered.value = true
-
-            val editingScreen = withContext(Dispatchers.IO) {
-                createEditableImageCopy(
-                    context = context,
-                    sourceUri = uri,
-                    mimeType = mimeType
-                )
-            }
-
-            if (editingScreen != null) {
-                setBarVisibility(
-                    visible = true,
-                    window = window
-                ) {
-                    appBarsVisible.value = it
-                }
-
-                navController.navigate(editingScreen)
-            }
-        }
-    }
 
     Scaffold(
         topBar = {
