@@ -3,6 +3,7 @@ package com.kaii.bphotos.compose.single_photo
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ContentValues
+import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
@@ -124,6 +125,9 @@ import com.kaii.bphotos.models.main_activity.MainViewModel
 import com.kaii.bphotos.models.multi_album.DisplayDateFormat
 import com.kaii.bphotos.models.multi_album.formatDate
 import com.kaii.bphotos.ui.theme.PhotosTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -138,6 +142,8 @@ class OpenWithView : ComponentActivity() {
             finish()
             return
         }
+
+        val isEditAction = intent?.action == Intent.ACTION_EDIT
 
         setContent {
             enableEdgeToEdge(
@@ -229,7 +235,8 @@ class OpenWithView : ComponentActivity() {
 
                             Content(
                                 uri = uri,
-                                window = window
+                                window = window,
+                                isEditIntent = isEditAction
                             )
                         }
 
@@ -265,10 +272,12 @@ class OpenWithView : ComponentActivity() {
 @Composable
 private fun Content(
     uri: Uri,
-    window: Window
+    window: Window,
+    isEditIntent: Boolean = false
 ) {
     val appBarsVisible = remember { mutableStateOf(true) }
     val context = LocalContext.current
+    val navController = LocalNavController.current
 
     val releaseExoPlayer: MutableState<() -> Unit> = remember { mutableStateOf({}) }
 
@@ -276,6 +285,32 @@ private fun Content(
     val type =
         if (mimeType.contains("image")) MediaType.Image
         else MediaType.Video
+
+    val editAutoTriggered = rememberSaveable { mutableStateOf(false) }
+    if (isEditIntent && type == MediaType.Image && !editAutoTriggered.value) {
+        LaunchedEffect(uri) {
+            editAutoTriggered.value = true
+
+            val editingScreen = withContext(Dispatchers.IO) {
+                createEditableImageCopy(
+                    context = context,
+                    sourceUri = uri,
+                    mimeType = mimeType
+                )
+            }
+
+            if (editingScreen != null) {
+                setBarVisibility(
+                    visible = true,
+                    window = window
+                ) {
+                    appBarsVisible.value = it
+                }
+
+                navController.navigate(editingScreen)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -823,6 +858,7 @@ private fun BottomBar(
 ) {
     val context = LocalContext.current
     val navController = LocalNavController.current
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
 
     AnimatedVisibility(
         visible = appBarsVisible.value,
@@ -882,49 +918,25 @@ private fun BottomBar(
                         action =
                             if (mediaType == MediaType.Image) {
                                 {
-                                    val extension = mimeType.split("/")[1]
-                                    val currentTime = System.currentTimeMillis()
-                                    val date = formatDate(
-                                        timestamp = currentTime / 1000,
-                                        sortBy = MediaItemSortMode.DateTaken,
-                                        format = DisplayDateFormat.Default
-                                    )
-                                    val name = context.resources.getString(R.string.edit_desc, "$date.$extension")
-                                    val destination = File(Environment.DIRECTORY_PICTURES, name) // TODO: maybe move into subdir?
-
-                                    val contentValues = ContentValues().apply {
-                                        put(MediaColumns.DISPLAY_NAME, name)
-                                        put(MediaColumns.DATE_MODIFIED, currentTime)
-                                        put(MediaColumns.DATE_TAKEN, currentTime)
-                                        put(MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
-                                        put(MediaColumns.MIME_TYPE, mimeType)
-                                    }
-
-                                    val contentUri = context.contentResolver.insert(
-                                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                                        contentValues
-                                    )
-
-                                    if (contentUri != null) {
-                                        context.contentResolver.copyUriToUri(
-                                            from = uri,
-                                            to = contentUri
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val editingScreen = createEditableImageCopy(
+                                            context = context,
+                                            sourceUri = uri,
+                                            mimeType = mimeType
                                         )
 
-                                        setBarVisibility(
-                                            visible = true,
-                                            window = window
-                                        ) {
-                                            appBarsVisible.value = it
+                                        if (editingScreen != null) {
+                                            withContext(Dispatchers.Main) {
+                                                setBarVisibility(
+                                                    visible = true,
+                                                    window = window
+                                                ) {
+                                                    appBarsVisible.value = it
+                                                }
+
+                                                navController.navigate(editingScreen)
+                                            }
                                         }
-
-                                        navController.navigate(
-                                            Screens.EditingScreen(
-                                                absolutePath = destination.absolutePath,
-                                                uri = contentUri.toString(),
-                                                dateTaken = currentTime / 1000
-                                            )
-                                        )
                                     }
                                 }
                             } else {
@@ -935,4 +947,44 @@ private fun BottomBar(
             }
         )
     }
+}
+
+private fun createEditableImageCopy(
+    context: android.content.Context,
+    sourceUri: Uri,
+    mimeType: String
+): Screens.EditingScreen? {
+    val extension = mimeType.substringAfter("/", "jpg")
+    val currentTime = System.currentTimeMillis()
+    val date = formatDate(
+        timestamp = currentTime / 1000,
+        sortBy = MediaItemSortMode.DateTaken,
+        format = DisplayDateFormat.Default
+    )
+    val name = context.resources.getString(R.string.edit_desc, "$date.$extension")
+    val destination = File(Environment.DIRECTORY_PICTURES, name) // TODO: maybe move into subdir?
+
+    val contentValues = ContentValues().apply {
+        put(MediaColumns.DISPLAY_NAME, name)
+        put(MediaColumns.DATE_MODIFIED, currentTime)
+        put(MediaColumns.DATE_TAKEN, currentTime)
+        put(MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
+        put(MediaColumns.MIME_TYPE, mimeType)
+    }
+
+    val contentUri = context.contentResolver.insert(
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        contentValues
+    ) ?: return null
+
+    context.contentResolver.copyUriToUri(
+        from = sourceUri,
+        to = contentUri
+    )
+
+    return Screens.EditingScreen(
+        absolutePath = destination.absolutePath,
+        uri = contentUri.toString(),
+        dateTaken = currentTime / 1000
+    )
 }

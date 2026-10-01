@@ -65,7 +65,6 @@ import com.kaii.bphotos.LocalAppDatabase
 import com.kaii.bphotos.LocalMainViewModel
 import com.kaii.bphotos.R
 import com.kaii.bphotos.compose.app_bars.BottomAppBarItem
-import com.kaii.bphotos.compose.app_bars.setBarVisibility
 import com.kaii.bphotos.compose.dialogs.ConfirmationDialog
 import com.kaii.bphotos.compose.dialogs.LoadingDialog
 import com.kaii.bphotos.compose.dialogs.SinglePhotoInfoDialog
@@ -74,7 +73,6 @@ import com.kaii.bphotos.datastore.Permissions
 import com.kaii.bphotos.helpers.GetDirectoryPermissionAndRun
 import com.kaii.bphotos.helpers.GetPermissionAndRun
 import com.kaii.bphotos.helpers.MultiScreenViewType
-import com.kaii.bphotos.helpers.Screens
 import com.kaii.bphotos.helpers.getParentFromPath
 import com.kaii.bphotos.helpers.moveImageToLockedFolder
 import com.kaii.bphotos.helpers.rememberVibratorManager
@@ -283,22 +281,6 @@ fun SinglePhotoViewCommon(
                 groupedMedia = groupedMedia,
                 loadsFromMainViewModel = loadsFromMainViewModel,
                 state = state,
-                showEditingView = {
-                    setBarVisibility(
-                        visible = true,
-                        window = window
-                    ) {
-                        appBarsVisible.value = it
-                    }
-
-                    navController.navigate(
-                        Screens.EditingScreen(
-                            absolutePath = currentMediaItem.value.absolutePath,
-                            uri = currentMediaItem.value.uri.toString(),
-                            dateTaken = currentMediaItem.value.dateTaken
-                        )
-                    )
-                },
                 onZeroItemsLeft = {
                     navController.popBackStack()
                 }
@@ -459,7 +441,6 @@ private fun BottomBar(
     groupedMedia: MutableState<List<MediaStoreData>>,
     loadsFromMainViewModel: Boolean,
     state: PagerState,
-    showEditingView: () -> Unit,
     onZeroItemsLeft: () -> Unit
 ) {
     val isLandscape by rememberDeviceOrientation()
@@ -525,16 +506,14 @@ private fun BottomBar(
                         text = "Edit",
                         iconResId = R.drawable.paintbrush,
                         cornerRadius = 32.dp,
-                        action = if (currentItem.type == MediaType.Image) {
-                            showEditingView
-                        } else {
-                            {
-                                val intent = Intent(Intent.ACTION_EDIT).apply {
-                                    setDataAndType(currentItem.uri, "video/*")
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(intent)
+                        action = {
+                            val mimeType = currentItem.mimeType
+                                ?: if (currentItem.type == MediaType.Video) "video/*" else "image/*"
+                            val intent = Intent(Intent.ACTION_EDIT).apply {
+                                setDataAndType(currentItem.uri, mimeType)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
+                            context.startActivity(Intent.createChooser(intent, context.getString(R.string.edit)))
                         }
                     )
 
