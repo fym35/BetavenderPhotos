@@ -85,6 +85,10 @@ fun GeneralSettingsPage(currentTab: MutableState<BottomBarTab>) {
                     .collectAsStateWithLifecycle(initialValue = true)
                 val muteOnStart by mainViewModel.settings.Video.getMuteOnStart()
                     .collectAsStateWithLifecycle(initialValue = false)
+                val showOpenInVideo by mainViewModel.settings.Video.getShowOpenInVideo()
+                    .collectAsStateWithLifecycle(initialValue = true)
+                val showOpenInPhoto by mainViewModel.settings.Video.getShowOpenInPhoto()
+                    .collectAsStateWithLifecycle(initialValue = true)
 
                 PreferencesSwitchRow(
                     title = stringResource(id = R.string.video_auto_play),
@@ -109,6 +113,32 @@ fun GeneralSettingsPage(currentTab: MutableState<BottomBarTab>) {
                     onRowClick = null,
                     onSwitchClick = { checked ->
                         mainViewModel.settings.Video.setMuteOnStart(checked)
+                    }
+                )
+
+                PreferencesSwitchRow(
+                    title = stringResource(id = R.string.video_show_open_in_video),
+                    summary = stringResource(id = R.string.video_show_open_in_video_desc),
+                    iconResID = R.drawable.movie_filled,
+                    checked = showOpenInVideo,
+                    position = RowPosition.Single,
+                    showBackground = false,
+                    onRowClick = null,
+                    onSwitchClick = { checked ->
+                        mainViewModel.settings.Video.setShowOpenInVideo(checked)
+                    }
+                )
+
+                PreferencesSwitchRow(
+                    title = stringResource(id = R.string.video_show_open_in_photo),
+                    summary = stringResource(id = R.string.video_show_open_in_photo_desc),
+                    iconResID = R.drawable.folder_open,
+                    checked = showOpenInPhoto,
+                    position = RowPosition.Single,
+                    showBackground = false,
+                    onRowClick = null,
+                    onSwitchClick = { checked ->
+                        mainViewModel.settings.Video.setShowOpenInPhoto(checked)
                     }
                 )
             }

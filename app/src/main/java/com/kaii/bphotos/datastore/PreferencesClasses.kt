@@ -400,6 +400,8 @@ class SettingsStorageImpl(
 class SettingsVideoImpl(private val context: Context, private val viewModelScope: CoroutineScope) {
     private val shouldAutoPlayKey = booleanPreferencesKey("video_should_autoplay")
     private val muteOnStartKey = booleanPreferencesKey("video_mute_on_start")
+    private val showOpenInVideoKey = booleanPreferencesKey("video_show_open_in_video")
+    private val showOpenInPhotoKey = booleanPreferencesKey("video_show_open_in_photo")
 
     fun getShouldAutoPlay(): Flow<Boolean> =
         context.datastore.data.map {
@@ -420,6 +422,28 @@ class SettingsVideoImpl(private val context: Context, private val viewModelScope
     fun setMuteOnStart(value: Boolean) = viewModelScope.launch {
         context.datastore.edit {
             it[muteOnStartKey] = value
+        }
+    }
+
+    fun getShowOpenInVideo(): Flow<Boolean> =
+        context.datastore.data.map {
+            it[showOpenInVideoKey] != false
+        }
+
+    fun setShowOpenInVideo(value: Boolean) = viewModelScope.launch {
+        context.datastore.edit {
+            it[showOpenInVideoKey] = value
+        }
+    }
+
+    fun getShowOpenInPhoto(): Flow<Boolean> =
+        context.datastore.data.map {
+            it[showOpenInPhotoKey] != false
+        }
+
+    fun setShowOpenInPhoto(value: Boolean) = viewModelScope.launch {
+        context.datastore.edit {
+            it[showOpenInPhotoKey] = value
         }
     }
 }

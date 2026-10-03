@@ -205,6 +205,10 @@
     <string name="media_delete_permanently">Hapus secara Permanen</string>
     <string name="media_delete_permanently_confirm">Hapus %1$s secara permanen?</string>
     <string name="media_cancel">Batal</string>
+    <string name="media_edit_date_title">Ubah tanggal foto</string>
+    <string name="media_edit_date_next">Lanjut</string>
+    <string name="media_edit_date_pick_time">Pilih waktu</string>
+    <string name="media_edit_date_back">Kembali</string>
     <string name="media_restore">Kembalikan</string>
     <string name="media_progress">Progres:</string>
     <string name="search_photo_name">Cari nama foto</string>

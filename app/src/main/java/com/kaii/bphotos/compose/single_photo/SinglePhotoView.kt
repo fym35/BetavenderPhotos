@@ -70,6 +70,7 @@ import com.kaii.bphotos.compose.dialogs.LoadingDialog
 import com.kaii.bphotos.compose.dialogs.SinglePhotoInfoDialog
 import com.kaii.bphotos.compose.rememberDeviceOrientation
 import com.kaii.bphotos.datastore.Permissions
+import com.kaii.bphotos.datastore.Video
 import com.kaii.bphotos.helpers.GetDirectoryPermissionAndRun
 import com.kaii.bphotos.helpers.GetPermissionAndRun
 import com.kaii.bphotos.helpers.MultiScreenViewType
@@ -455,6 +456,12 @@ private fun BottomBar(
 
     var showLoadingDialog by remember { mutableStateOf(false) }
 
+    val mainViewModel = LocalMainViewModel.current
+    val showOpenInVideo by mainViewModel.settings.Video.getShowOpenInVideo()
+        .collectAsStateWithLifecycle(initialValue = true)
+    val showOpenInPhoto by mainViewModel.settings.Video.getShowOpenInPhoto()
+        .collectAsStateWithLifecycle(initialValue = true)
+
     if (showLoadingDialog) {
         LoadingDialog(
             title = stringResource(id = R.string.secure_encrypting),
@@ -523,9 +530,9 @@ private fun BottomBar(
                         }
                     )
 
-                    if (currentItem.type == MediaType.Video) {
+                    if (currentItem.type == MediaType.Video && showOpenInVideo) {
                         BottomAppBarItem(
-                            text = "Open in",
+                            text = stringResource(id = R.string.media_open_in),
                             iconResId = R.drawable.movie_filled,
                             cornerRadius = 32.dp,
                             action = {
@@ -534,7 +541,23 @@ private fun BottomBar(
                                     setDataAndType(currentItem.uri, mimeType)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                context.startActivity(Intent.createChooser(intent, "Open with..."))
+                                context.startActivity(Intent.createChooser(intent, context.getString(R.string.media_open_with)))
+                            }
+                        )
+                    }
+
+                    if (currentItem.type == MediaType.Image && showOpenInPhoto) {
+                        BottomAppBarItem(
+                            text = stringResource(id = R.string.media_open_in),
+                            iconResId = R.drawable.folder_open,
+                            cornerRadius = 32.dp,
+                            action = {
+                                val mimeType = currentItem.mimeType ?: "image/*"
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(currentItem.uri, mimeType)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, context.getString(R.string.media_open_with)))
                             }
                         )
                     }
@@ -545,7 +568,6 @@ private fun BottomBar(
                     Log.d(TAG, "CURRENT ITEM URI ${currentItem.uri}")
 
                     val coroutineScope = rememberCoroutineScope()
-                    val mainViewModel = LocalMainViewModel.current
                     val applicationDatabase = LocalAppDatabase.current
 
                     GetPermissionAndRun(

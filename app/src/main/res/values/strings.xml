@@ -165,6 +165,10 @@
     <string name="video_seek_front">Skip forwards 5 seconds</string>
     <string name="video_play_toggle">Toggle play/pause for this video</string>
     <string name="video_decrypting">Decrypting video, please wait</string>
+    <string name="video_show_open_in_video">Show Open In for Videos</string>
+    <string name="video_show_open_in_video_desc">Show an Open in button when viewing videos to open them in other apps</string>
+    <string name="video_show_open_in_photo">Show Open In for Photos</string>
+    <string name="video_show_open_in_photo_desc">Show an Open in button when viewing photos to open them in other apps</string>
 
     <!-- Editing -->
     <string name="edit">Edit</string>
@@ -278,6 +282,8 @@
     <string name="media_non_existent">This media doesn\'t exist!</string>
     <string name="media_broken">Broken Media</string>
     <string name="media_share">Share</string>
+    <string name="media_open_in">Open in</string>
+    <string name="media_open_with">Open with…</string>
     <string name="media_delete">Delete</string>
     <string name="media_delete_confirm">Delete this media?</string>
     <string name="media_trash_confirm">Move selected items to trash bin?</string>
@@ -299,6 +305,10 @@
     <string name="media_exif_failed">Failed erasing EXIF data</string>
     <string name="media_erase">Erase</string>
     <string name="media_confirm">Confirm</string>
+    <string name="media_edit_date_title">Edit date taken</string>
+    <string name="media_edit_date_next">Next</string>
+    <string name="media_edit_date_pick_time">Pick time</string>
+    <string name="media_edit_date_back">Back</string>
     <string name="media_okay">Okay</string>
     <string name="media_move_copy_list_search_bar">Search for an album</string>
     <string name="media_copy_snackbar_title">Copying media…</string>
