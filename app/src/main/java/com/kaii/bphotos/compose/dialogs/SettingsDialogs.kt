@@ -70,6 +70,7 @@ import com.kaii.lavender.snackbars.LavenderSnackbarController
 import com.kaii.lavender.snackbars.LavenderSnackbarEvents
 import com.kaii.bphotos.LocalMainViewModel
 import com.kaii.bphotos.R
+import com.kaii.bphotos.compose.CheckBoxButtonRow
 import com.kaii.bphotos.compose.ConfirmCancelRow
 import com.kaii.bphotos.compose.FullWidthDialogButton
 import com.kaii.bphotos.compose.HorizontalSeparator
@@ -79,7 +80,9 @@ import com.kaii.bphotos.compose.TitleCloseRow
 import com.kaii.bphotos.datastore.BottomBarTab
 import com.kaii.bphotos.datastore.DefaultTabs
 import com.kaii.bphotos.datastore.LookAndFeel
+import com.kaii.bphotos.datastore.OpenInMediaTypes
 import com.kaii.bphotos.datastore.PhotoGrid
+import com.kaii.bphotos.datastore.Video
 import com.kaii.bphotos.datastore.Storage
 import com.kaii.bphotos.datastore.StoredDrawable
 import com.kaii.bphotos.datastore.TrashBin
@@ -880,5 +883,50 @@ fun DateFormatDialog(
                 onDismiss()
             }
         }
+    }
+}
+
+@Composable
+fun OpenInMediaTypeDialog(
+    initialValue: Int,
+    onDismiss: () -> Unit
+) {
+    LavenderDialogBase(
+        onDismiss = onDismiss
+    ) {
+        TitleCloseRow(
+            title = stringResource(id = R.string.video_show_open_in),
+            closeOffset = 12.dp
+        ) {
+            onDismiss()
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        var selectedTypes by remember(initialValue) { mutableIntStateOf(initialValue) }
+
+        CheckBoxButtonRow(
+            text = stringResource(id = R.string.video_show_open_in_photos),
+            checked = (selectedTypes and OpenInMediaTypes.PHOTOS) != 0
+        ) {
+            selectedTypes = selectedTypes xor OpenInMediaTypes.PHOTOS
+        }
+
+        CheckBoxButtonRow(
+            text = stringResource(id = R.string.video_show_open_in_videos),
+            checked = (selectedTypes and OpenInMediaTypes.VIDEOS) != 0
+        ) {
+            selectedTypes = selectedTypes xor OpenInMediaTypes.VIDEOS
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        val mainViewModel = LocalMainViewModel.current
+        ConfirmCancelRow(
+            onConfirm = {
+                mainViewModel.settings.Video.setShowOpenInTypes(selectedTypes)
+                onDismiss()
+            }
+        )
     }
 }

@@ -69,6 +69,7 @@ import com.kaii.bphotos.compose.dialogs.ConfirmationDialog
 import com.kaii.bphotos.compose.dialogs.LoadingDialog
 import com.kaii.bphotos.compose.dialogs.SinglePhotoInfoDialog
 import com.kaii.bphotos.compose.rememberDeviceOrientation
+import com.kaii.bphotos.datastore.OpenInMediaTypes
 import com.kaii.bphotos.datastore.Permissions
 import com.kaii.bphotos.datastore.Video
 import com.kaii.bphotos.helpers.GetDirectoryPermissionAndRun
@@ -457,10 +458,8 @@ private fun BottomBar(
     var showLoadingDialog by remember { mutableStateOf(false) }
 
     val mainViewModel = LocalMainViewModel.current
-    val showOpenInVideo by mainViewModel.settings.Video.getShowOpenInVideo()
-        .collectAsStateWithLifecycle(initialValue = true)
-    val showOpenInPhoto by mainViewModel.settings.Video.getShowOpenInPhoto()
-        .collectAsStateWithLifecycle(initialValue = true)
+    val showOpenInTypes by mainViewModel.settings.Video.getShowOpenInTypes()
+        .collectAsStateWithLifecycle(initialValue = OpenInMediaTypes.ALL)
 
     if (showLoadingDialog) {
         LoadingDialog(
@@ -530,29 +529,17 @@ private fun BottomBar(
                         }
                     )
 
-                    if (currentItem.type == MediaType.Video && showOpenInVideo) {
-                        BottomAppBarItem(
-                            text = stringResource(id = R.string.media_open_in),
-                            iconResId = R.drawable.movie_filled,
-                            cornerRadius = 32.dp,
-                            action = {
-                                val mimeType = currentItem.mimeType ?: "video/*"
-                                val intent = Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(currentItem.uri, mimeType)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(Intent.createChooser(intent, context.getString(R.string.media_open_with)))
-                            }
-                        )
-                    }
+                    val showOpenIn = (currentItem.type == MediaType.Video && (showOpenInTypes and OpenInMediaTypes.VIDEOS) != 0) ||
+                            (currentItem.type == MediaType.Image && (showOpenInTypes and OpenInMediaTypes.PHOTOS) != 0)
 
-                    if (currentItem.type == MediaType.Image && showOpenInPhoto) {
+                    if (showOpenIn) {
                         BottomAppBarItem(
                             text = stringResource(id = R.string.media_open_in),
-                            iconResId = R.drawable.folder_open,
+                            iconResId = if (currentItem.type == MediaType.Video) R.drawable.movie_filled else R.drawable.folder_open,
                             cornerRadius = 32.dp,
                             action = {
-                                val mimeType = currentItem.mimeType ?: "image/*"
+                                val mimeType = currentItem.mimeType
+                                    ?: if (currentItem.type == MediaType.Video) "video/*" else "image/*"
                                 val intent = Intent(Intent.ACTION_VIEW).apply {
                                     setDataAndType(currentItem.uri, mimeType)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

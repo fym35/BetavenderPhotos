@@ -165,10 +165,11 @@
     <string name="video_seek_front">Skip forwards 5 seconds</string>
     <string name="video_play_toggle">Toggle play/pause for this video</string>
     <string name="video_decrypting">Decrypting video, please wait</string>
-    <string name="video_show_open_in_video">Show Open In for Videos</string>
-    <string name="video_show_open_in_video_desc">Show an Open in button when viewing videos to open them in other apps</string>
-    <string name="video_show_open_in_photo">Show Open In for Photos</string>
-    <string name="video_show_open_in_photo_desc">Show an Open in button when viewing photos to open them in other apps</string>
+    <string name="video_show_open_in">Show Open In</string>
+    <string name="video_show_open_in_desc">Show an Open in button when viewing media to open it in other apps</string>
+    <string name="video_show_open_in_photos">Photos</string>
+    <string name="video_show_open_in_videos">Videos</string>
+    <string name="video_show_open_in_none">None</string>
 
     <!-- Editing -->
     <string name="edit">Edit</string>

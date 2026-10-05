@@ -250,3 +250,16 @@ data class ImmichBasicInfo(
     val bearerToken: String
 )
 
+/** Bitmask for which media types the "Open in" button shows up for.
+ * Use [OPEN_IN_NONE], [OPEN_IN_PHOTOS], [OPEN_IN_VIDEOS] combined with `or`.
+ */
+object OpenInMediaTypes {
+    const val NONE = 0
+    const val PHOTOS = 1
+    const val VIDEOS = 2
+    const val ALL = PHOTOS or VIDEOS
+}
+
+fun Int.showsOpenInForPhotos() = (this and OpenInMediaTypes.PHOTOS) != 0
+fun Int.showsOpenInForVideos() = (this and OpenInMediaTypes.VIDEOS) != 0
+
