@@ -1,0 +1,816 @@
+package com.kaii.bphotos.helpers.editing
+
+import android.content.ContentValues
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.net.Uri
+import android.provider.MediaStore
+import android.provider.MediaStore.MediaColumns
+import android.util.Log
+import androidx.annotation.OptIn
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.fastMap
+import androidx.compose.ui.util.fastMapNotNull
+import androidx.core.graphics.scale
+import androidx.core.net.toUri
+import androidx.media3.common.Effect
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.ChannelMixingAudioProcessor
+import androidx.media3.common.audio.ChannelMixingMatrix
+import androidx.media3.common.audio.SonicAudioProcessor
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.BitmapOverlay
+import androidx.media3.effect.Crop
+import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.Presentation
+import androidx.media3.effect.ScaleAndRotateTransformation
+import androidx.media3.effect.SpeedChangeEffect
+import androidx.media3.transformer.Composition
+import androidx.media3.transformer.DefaultEncoderFactory
+import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.Effects
+import androidx.media3.transformer.ExportException
+import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.ProgressHolder
+import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.VideoEncoderSettings
+import com.kaii.lavender.snackbars.LavenderSnackbarController
+import com.kaii.lavender.snackbars.LavenderSnackbarEvents
+import com.kaii.bphotos.R
+import com.kaii.bphotos.helpers.getDateTakenForMedia
+import com.kaii.bphotos.helpers.getParentFromPath
+import com.kaii.bphotos.helpers.permanentlyDeletePhotoList
+import com.kaii.bphotos.helpers.setDateTakenForMedia
+import com.kaii.bphotos.helpers.toBasePath
+import com.kaii.bphotos.mediastore.MediaStoreData
+import com.kaii.bphotos.mediastore.MediaType
+import com.kaii.bphotos.mediastore.copyMedia
+import com.kaii.bphotos.mediastore.getUriFromAbsolutePath
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import java.io.File
+import kotlin.math.max
+import kotlin.math.pow
+import kotlin.math.roundToInt
+
+private const val TAG = "com.kaii.bphotos.helpers.editing.FileHandling"
+
+/** return the id of the newly created video, or -1 if an error occurs */
+@OptIn(UnstableApi::class)
+suspend fun saveVideo(
+    context: Context,
+    modifications: List<VideoModification>,
+    videoEditingState: VideoEditingState,
+    basicVideoData: BasicVideoData,
+    uri: Uri,
+    absolutePath: String,
+    overwrite: Boolean,
+    containerDimens: Size,
+    canvasSize: Size,
+    textMeasurer: TextMeasurer,
+    isFromOpenWithView: Boolean,
+    onFailure: () -> Unit
+): Long = withContext(Dispatchers.Main) {
+    // 100 * 2 for each of the transformer.start's, and 40 for the copying
+    val totalPercentage = 120f * 2
+    val percentage = mutableFloatStateOf(0f)
+    val progressHolder = ProgressHolder()
+    val body = mutableStateOf(context.resources.getString(R.string.editing_export_video_loading_body, 0, 3))
+
+    LavenderSnackbarController.pushEvent(
+        LavenderSnackbarEvents.ProgressEvent(
+            message = context.resources.getString(R.string.editing_export_video_loading),
+            body = body,
+            icon = R.drawable.videocam,
+            percentage = percentage
+        )
+    )
+
+    val trimPositions = (modifications.lastOrNull {
+        it is VideoModification.Trim
+    } ?: VideoModification.Trim(start = 0f, end = 0f)) as VideoModification.Trim
+
+    val clippingConfiguration = MediaItem.ClippingConfiguration.Builder()
+        .setStartPositionMs((trimPositions.start * 1000f).toLong())
+        .setEndPositionMs((trimPositions.end * 1000f).toLong())
+        .build()
+
+    val modList = mutableListOf<Effect>()
+
+    if (videoEditingState.rotation != 0f) {
+        modList.add(
+            ScaleAndRotateTransformation.Builder()
+                .setRotationDegrees(-videoEditingState.rotation) // negative since our rotation is clockwise
+                .build()
+        )
+    }
+
+    val filter = modifications.lastOrNull {
+        it is VideoModification.Filter
+    } as? VideoModification.Filter
+
+    if (filter != null) {
+        modList.add(
+            filter.type.toEffect()
+        )
+    }
+
+    val mediaItem = MediaItem.Builder()
+        .setUri(uri)
+        .setClippingConfiguration(clippingConfiguration)
+        .build()
+
+    val audioEffectList = mutableListOf<AudioProcessor>()
+
+    // try to "linearize" as best as possible
+    val audioProcessor = ChannelMixingAudioProcessor()
+    val minDb = -40f
+    val maxDb = 0f
+
+    val dbChange = minDb + (maxDb - minDb) * videoEditingState.volume
+    val linearGain = 10f.pow(dbChange / 20f)
+
+    Log.d(TAG, "Item has ${basicVideoData.audioChannelCount} audio channels.")
+
+    audioProcessor.putChannelMixingMatrix(
+        ChannelMixingMatrix.createForConstantGain(
+            basicVideoData.audioChannelCount,
+            2
+        ).scaleBy(linearGain)
+    )
+
+    audioEffectList.add(audioProcessor)
+
+    if (videoEditingState.speed != 1f) {
+        modList.add(
+            SpeedChangeEffect(videoEditingState.speed)
+        )
+        audioEffectList.add(SonicAudioProcessor().apply {
+            setSpeed(videoEditingState.speed)
+        })
+    }
+
+    val ratio =
+        max(
+            basicVideoData.width / containerDimens.width,
+            basicVideoData.height / containerDimens.height
+        )
+
+    val overlayEffects = mutableListOf<BitmapOverlay>()
+    val textOverlays =
+        modifications.mapNotNull {
+            it as? VideoModification.DrawingText
+        }
+    if (textOverlays.isNotEmpty()) {
+        textOverlays.forEach { overlay ->
+            overlayEffects.add(
+                overlay.type.toEffect(
+                    value = overlay,
+                    timespan = overlay.timespan,
+                    ratio = ratio,
+                    context = context,
+                    externalCanvasSize = canvasSize,
+                    textMeasurer = textMeasurer
+                )
+            )
+        }
+    }
+
+    val pathOverlays =
+        modifications.mapNotNull {
+            it as? VideoModification.DrawingPath
+        }
+    if (pathOverlays.isNotEmpty()) {
+        pathOverlays.forEach { overlay ->
+            val effect =
+                if (overlay.type == DrawingItems.Pencil) {
+                    overlay.type.toEffect(
+                        value = overlay.path,
+                        timespan = overlay.timespan,
+                        ratio = ratio,
+                        context = context,
+                        externalCanvasSize = canvasSize,
+                        textMeasurer = textMeasurer
+                    )
+                } else {
+                    overlay.type.toEffect(
+                        value = overlay.path,
+                        timespan = overlay.timespan,
+                        ratio = ratio,
+                        context = context,
+                        externalCanvasSize = canvasSize,
+                        textMeasurer = textMeasurer
+                    )
+                }
+
+            overlayEffects.add(effect)
+        }
+    }
+
+    val bitmapOverlays =
+        modifications.mapNotNull {
+            it as? VideoModification.DrawingImage
+        }
+
+    if (bitmapOverlays.isNotEmpty()) {
+        bitmapOverlays.forEach { overlay ->
+            val effect =
+                overlay.type.toEffect(
+                    value = overlay,
+                    timespan = overlay.timespan,
+                    ratio = ratio,
+                    context = context,
+                    externalCanvasSize = canvasSize,
+                    textMeasurer = textMeasurer
+                )
+
+            overlayEffects.add(effect)
+        }
+    }
+
+    val overlayEffectsList = listOf(
+        OverlayEffect(
+            overlayEffects.toList()
+        )
+    )
+
+    val editedMediaItem = EditedMediaItem.Builder(mediaItem)
+        .setEffects(Effects(audioEffectList, modList + videoEditingState.effectList + overlayEffectsList))
+        .build()
+
+    val file = File(absolutePath)
+    val uri = context.contentResolver.getUriFromAbsolutePath(absolutePath, MediaType.Video)
+
+    if (uri == null) {
+        percentage.floatValue = 1f
+        onFailure()
+        return@withContext -1L
+    }
+
+    val media = MediaStoreData(
+        id = 0L,
+        displayName = file.name,
+        absolutePath = file.absolutePath,
+        dateTaken = System.currentTimeMillis() / 1000,
+        dateModified = System.currentTimeMillis() / 1000,
+        type = MediaType.Video,
+        mimeType = "video/mp4",
+        uri = uri,
+        size = 0L
+    )
+
+    val tempFile = File(context.cacheDir, "/${media.displayName}")
+
+    if (tempFile.exists()) tempFile.delete()
+    if (tempFile.parentFile?.exists() != true) tempFile.parentFile?.mkdirs()
+    withContext(Dispatchers.IO) {
+        tempFile.createNewFile()
+    }
+
+    var completions = 0
+    val transformer = Transformer.Builder(context)
+        .addListener(object : Transformer.Listener {
+            override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                super.onCompleted(composition, exportResult)
+
+                if (completions >= 1) {
+                    tempFile.delete()
+
+                    val newFile = File(absolutePath)
+                    if (isFromOpenWithView && newFile.exists()) {
+                        newFile.delete()
+                    }
+                }
+
+                // not using newMedia.uri since we don't have access to that after deletion
+                context.contentResolver.getUriFromAbsolutePath(absolutePath = tempFile.absolutePath, type = MediaType.Video)?.let { newUri ->
+                    context.contentResolver.update(
+                        newUri,
+                        ContentValues().apply {
+                            put(MediaStore.MediaColumns.IS_PENDING, 0)
+                        },
+                        null
+                    )
+                    context.contentResolver.notifyChange(newUri, null)
+                }
+
+                completions += 1
+            }
+
+            override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
+                super.onError(composition, exportResult, exportException)
+
+                Log.d(TAG, exportException.message.toString())
+                exportException.printStackTrace()
+
+                onFailure()
+            }
+        })
+        .setVideoMimeType(MimeTypes.VIDEO_H264)
+        .setAudioMimeType(MimeTypes.AUDIO_AAC)
+        .setEncoderFactory(
+            DefaultEncoderFactory.Builder(context)
+                .setRequestedVideoEncoderSettings(
+                    VideoEncoderSettings.Builder()
+                        .setBitrate(
+                            if (videoEditingState.bitrate == 0) 1_200_000
+                            else videoEditingState.bitrate
+                        )
+                        .build()
+                )
+                .build()
+        )
+        .build()
+
+
+    // TODO: SEVERELY inefficient please fix
+    transformer.start(
+        editedMediaItem,
+        tempFile.absolutePath
+    )
+
+    while (completions == 0) {
+        transformer.getProgress(progressHolder)
+        percentage.floatValue = (progressHolder.progress / totalPercentage)
+
+        body.value = context.resources.getString(R.string.editing_export_video_loading_body, 1, 3)
+
+        delay(1000)
+    }
+    progressHolder.progress = 0 // reset for second operation
+    delay(1000)
+
+    modList.clear()
+
+    val cropArea = modifications.lastOrNull {
+        it is VideoModification.Crop
+    } as? VideoModification.Crop
+
+    if (cropArea != null && !cropArea.left.isNaN() && !cropArea.right.isNaN() && !cropArea.top.isNaN() && !cropArea.bottom.isNaN()) {
+        val left = (cropArea.left / containerDimens.width).coerceIn(-1f, 1f)
+        val right = (cropArea.right / containerDimens.width).coerceIn(-1f, 1f)
+        val top = (cropArea.top / containerDimens.height).coerceIn(-1f, 1f)
+        val bottom = (cropArea.bottom / containerDimens.height).coerceIn(-1f, 1f)
+
+        val normalizedLeft = (2f * left) - 1f
+        val normalizedRight = (2f * right) - 1f
+        val normalizedTop = -(2f * top) + 1f
+        val normalizedBottom = -(2f * bottom) + 1f
+
+        modList.add(
+            Crop(
+                normalizedLeft,
+                normalizedRight,
+                normalizedBottom,
+                normalizedTop
+            )
+        )
+
+        val widthPercent = right - left
+        val heightPercent = bottom - top
+
+        val newWidth = (basicVideoData.width * widthPercent).toInt()
+        val newHeight = (basicVideoData.height * heightPercent).toInt()
+
+        modList.add(
+            Presentation.createForShortSide(if (newWidth > newHeight) newWidth else newHeight)
+        )
+    }
+
+    if (!tempFile.exists() && tempFile.length() <= 0) {
+        percentage.floatValue = 1f
+        onFailure()
+        return@withContext -1L
+    }
+
+    val finalMediaItem = MediaItem.Builder()
+        .setUri(tempFile.toUri())
+        .build()
+
+    val finalEditedMediaItem = EditedMediaItem.Builder(finalMediaItem)
+        .setEffects(Effects(emptyList(), modList))
+        .build()
+
+    val tempFileCrop = File(context.cacheDir, "/crop-${media.displayName}")
+    if (tempFileCrop.exists()) tempFileCrop.delete()
+    if (tempFileCrop.parentFile?.exists() != true) tempFileCrop.parentFile?.mkdirs()
+    withContext(Dispatchers.IO) {
+        tempFileCrop.createNewFile()
+    }
+
+    transformer.start(
+        finalEditedMediaItem,
+        tempFileCrop.absolutePath
+    )
+
+    // wait again while that does its thing
+    while (completions == 1) {
+        transformer.getProgress(progressHolder)
+        percentage.floatValue = (100f / 240f) + (progressHolder.progress / totalPercentage) // (100f / 240f) since the previous "half" was done
+
+        if (percentage.floatValue >= 0.5f) {
+            body.value = context.resources.getString(R.string.editing_export_video_loading_body, 2, 3)
+        }
+
+        delay(1000)
+    }
+    delay(1000)
+
+    if (!tempFileCrop.exists() && tempFileCrop.length() <= 0) {
+        percentage.floatValue = 1f
+        onFailure()
+        return@withContext -1L
+    }
+
+    if (overwrite) {
+        permanentlyDeletePhotoList(
+            context = context,
+            list = listOf(
+                media.uri
+            )
+        )
+    }
+
+    val editedDisplayName = tempFileCrop.name.replaceFirst("crop-", "")
+    val newUri = context.contentResolver.copyMedia(
+        context = context,
+        media = MediaStoreData(
+            id = 0L,
+            uri = tempFileCrop.toUri(),
+            absolutePath = tempFileCrop.absolutePath,
+            displayName = editedDisplayName,
+            dateTaken = System.currentTimeMillis() / 1000,
+            dateModified = System.currentTimeMillis() / 1000,
+            mimeType = "video/mp4",
+            type = MediaType.Video,
+            size = tempFileCrop.length()
+        ),
+        basePath = absolutePath.toBasePath(),
+        destination = absolutePath.getParentFromPath(),
+        currentVolumes = MediaStore.getExternalVolumeNames(context),
+        overwriteDate = false,
+        overrideDisplayName = editedDisplayName
+    )
+
+    if (newUri == null) {
+        percentage.floatValue = 1f
+        onFailure()
+        return@withContext -1L
+    }
+
+    if (tempFileCrop.exists()) tempFileCrop.delete()
+    if (tempFile.exists()) tempFile.delete()
+
+    body.value = context.resources.getString(R.string.editing_export_video_loading_body, 3, 3)
+    percentage.floatValue = 1f
+
+    return@withContext newUri.lastPathSegment?.toLongOrNull() ?: -1L
+}
+
+/** return the id of the newly created image, or -1 if an error occurs */
+suspend fun saveImage(
+    context: Context,
+    image: ImageBitmap,
+    absolutePath: String,
+    containerDimens: Size,
+    drawingPaintState: DrawingPaintState,
+    imageEditingState: ImageEditingState,
+    modifications: List<ImageModification>,
+    textMeasurer: TextMeasurer,
+    actualLeft: Float,
+    actualTop: Float,
+    overwrite: Boolean,
+    isFromOpenWithView: Boolean
+): Long {
+    val isLoading = mutableStateOf(true)
+
+    LavenderSnackbarController.pushEvent(
+        LavenderSnackbarEvents.LoadingEvent(
+            message = context.resources.getString(R.string.editing_saving),
+            icon = R.drawable.image_arrow_up,
+            isLoading = isLoading
+        )
+    )
+
+    val images = drawingPaintState.modifications
+        .fastMapNotNull { mod ->
+            mod as? SharedModification.DrawingImage
+        }
+        .fastMap { mod ->
+            context.contentResolver.openInputStream(mod.image.bitmapUri).use { inputStream ->
+                Pair(mod.image.bitmapUri, BitmapFactory.decodeStream(inputStream).asImageBitmap())
+            }
+        }
+
+    val bitmap = image.asAndroidBitmap()
+        .copy(Bitmap.Config.ARGB_8888, true)
+        .asImageBitmap()
+
+    val adjustmentCanvas = Canvas(bitmap)
+    val mods = modifications + drawingPaintState.modifications
+    val sorted = mods.sortedBy { mod ->
+        if (mod is ImageModification.Adjustment) {
+            MediaAdjustments.entries.indexOf(mod.type)
+        } else {
+            MediaAdjustments.entries.size + 1
+        }
+    }
+
+    val drawScope = CanvasDrawScope()
+    sorted.forEach { mod ->
+        drawScope.draw(
+            density = Density(1f),
+            layoutDirection = LayoutDirection.Ltr,
+            canvas = adjustmentCanvas,
+            size = Size(
+                width = bitmap.width.toFloat(),
+                height = bitmap.height.toFloat()
+            )
+        ) {
+            if (mod is ImageModification.Filter) {
+                drawImage(
+                    image = bitmap,
+                    colorFilter = ColorFilter.colorMatrix(mod.type.matrix)
+                )
+            } else if (mod is ImageModification.Adjustment) {
+                drawImage(
+                    image = bitmap,
+                    colorFilter = ColorFilter.colorMatrix(ColorMatrix(mod.type.getMatrix(mod.value)))
+                )
+            }
+        }
+    }
+
+    val canvas = Canvas(bitmap)
+
+    val ratio =
+        max(
+            image.width.toFloat() / containerDimens.width,
+            image.height.toFloat() / containerDimens.height
+        )
+
+    val translateX = -(actualLeft * ratio)
+    val translateY = -(actualTop * ratio)
+
+    drawScope.draw(
+        density = Density(1f),
+        layoutDirection = LayoutDirection.Ltr,
+        canvas = canvas,
+        size = Size(
+            width = bitmap.width.toFloat(),
+            height = bitmap.height.toFloat()
+        )
+    ) {
+        translate(left = translateX, top = translateY) {
+            scale(scale = ratio, pivot = Offset.Zero) {
+                drawingPaintState.modifications.forEach { modification ->
+                    when (modification) {
+                        is SharedModification.DrawingPath -> {
+                            val path = modification.path
+
+                            drawPath(
+                                path = path.path,
+                                style = Stroke(
+                                    width = path.paint.strokeWidth,
+                                    cap = path.paint.strokeCap,
+                                    join = path.paint.strokeJoin,
+                                    miter = path.paint.strokeMiterLimit,
+                                    pathEffect = path.paint.pathEffect
+                                ),
+                                blendMode = path.paint.blendMode,
+                                color = path.paint.color,
+                                alpha = path.paint.alpha
+                            )
+                        }
+
+                        is SharedModification.DrawingText -> {
+                            val text = modification.text
+
+                            rotate(text.rotation, text.position + text.size.toOffset() / 2f) {
+                                translate(text.position.x, text.position.y) {
+                                    val textLayout = textMeasurer.measure(
+                                        text = text.text,
+                                        style = DrawableText.Styles.Default.copy(
+                                            color = text.paint.color,
+                                            fontSize = text.paint.strokeWidth.sp
+                                        ),
+                                        softWrap = false
+                                    )
+
+                                    drawText(
+                                        textLayoutResult = textLayout,
+                                        blendMode = text.paint.blendMode
+                                    )
+                                }
+                            }
+                        }
+
+                        is SharedModification.DrawingImage -> {
+                            val image = modification.image
+
+                            rotate(image.rotation, image.position + image.size.toOffset() / 2f) {
+                                translate(image.position.x, image.position.y) {
+                                    drawImage(
+                                        image = images.firstOrNull { it.first == image.bitmapUri }?.second ?: ImageBitmap(512, 512),
+                                        dstSize = image.size,
+                                        filterQuality = FilterQuality.Medium,
+                                        blendMode = image.paint.blendMode
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val crop =
+        imageEditingState.modificationList.lastOrNull {
+            it is ImageModification.Crop
+        } as? ImageModification.Crop ?: ImageModification.Crop(0f, 0f, 0f, 0f)
+
+    val left = (crop.left / containerDimens.width)
+    val top = (crop.top / containerDimens.height)
+    val width = (crop.width / containerDimens.width)
+    val height = (crop.height / containerDimens.height)
+
+    val cropped = Bitmap
+        .createBitmap(
+            bitmap.asAndroidBitmap(),
+            (left * bitmap.width).roundToInt(),
+            (top * bitmap.height).roundToInt(),
+            (width * bitmap.width).roundToInt(),
+            (height * bitmap.height).roundToInt(),
+            Matrix().apply {
+                postRotate(imageEditingState.rotation)
+            },
+            true
+        )
+        .scale(
+            if (imageEditingState.rotation % 180f == 0f) imageEditingState.resolution.width else imageEditingState.resolution.height,
+            if (imageEditingState.rotation % 180f == 0f) imageEditingState.resolution.height else imageEditingState.resolution.width
+        )
+
+    Log.d(TAG, "Image crop left ${left * bitmap.width} and width ${width * bitmap.width}")
+
+    val file = File(absolutePath)
+    val uri = context.contentResolver.getUriFromAbsolutePath(absolutePath, MediaType.Image)
+
+    if (uri == null) {
+        isLoading.value = false
+
+        LavenderSnackbarController.pushEvent(
+            LavenderSnackbarEvents.MessageEvent(
+                message = context.resources.getString(R.string.editing_failed),
+                icon = R.drawable.broken_image,
+                duration = SnackbarDuration.Short
+            )
+        )
+
+        return -1L
+    }
+
+    val media = MediaStoreData(
+        displayName = file.name,
+        absolutePath = file.absolutePath,
+        dateTaken = getDateTakenForMedia(absolutePath = absolutePath),
+        dateModified = System.currentTimeMillis() / 1000,
+        type = MediaType.Image,
+        mimeType = "image/png",
+        uri = uri,
+        size = 0L,
+        id = 0L
+    )
+
+    val newUri =
+        if (!overwrite && !isFromOpenWithView) {
+            // copies the original, edited bytes are written over it below via openOutputStream
+            context.contentResolver.copyMedia(
+                context = context,
+                media = media,
+                destination = absolutePath.getParentFromPath(),
+                basePath = absolutePath.toBasePath(),
+                currentVolumes = MediaStore.getExternalVolumeNames(context),
+                overwriteDate = false,
+                overrideDisplayName = file.name.removeSuffix(file.extension) + "png"
+            )
+        } else {
+            uri
+        }
+
+    if (newUri == null) {
+        isLoading.value = false
+
+        LavenderSnackbarController.pushEvent(
+            LavenderSnackbarEvents.MessageEvent(
+                message = context.resources.getString(R.string.editing_failed),
+                icon = R.drawable.broken_image,
+                duration = SnackbarDuration.Short
+            )
+        )
+
+        return -1L
+    }
+
+    val wroteData = context.contentResolver.openOutputStream(newUri)?.use { outputStream ->
+        cropped.compress(
+            Bitmap.CompressFormat.PNG,
+            100,
+            outputStream
+        )
+    } != null
+
+    context.contentResolver.setDateForMedia(
+        uri = newUri,
+        type = media.type,
+        dateTaken = if (overwrite) media.dateTaken * 1000 else System.currentTimeMillis(),
+        overwriteLastModified = false
+    )
+
+    if (wroteData) {
+        isLoading.value = false
+    } else {
+        LavenderSnackbarController.pushEvent(
+            LavenderSnackbarEvents.MessageEvent(
+                message = context.resources.getString(R.string.editing_failed),
+                icon = R.drawable.broken_image,
+                duration = SnackbarDuration.Short
+            )
+        )
+    }
+
+    return newUri.lastPathSegment?.toLongOrNull() ?: -1L
+}
+
+/** @param dateTaken in seconds since epoch */
+private fun android.content.ContentResolver.setDateForMedia(
+    uri: Uri,
+    type: MediaType,
+    dateTaken: Long,
+    overwriteLastModified: Boolean = true
+) {
+    try {
+        if (type == MediaType.Image) {
+            getAbsolutePathFromUri(uri)?.let { path ->
+                setDateTakenForMedia(path, dateTaken)
+            }
+        }
+
+        if (overwriteLastModified) {
+            getAbsolutePathFromUri(uri)?.let {
+                File(it).setLastModified(dateTaken * 1000)
+            }
+        }
+
+        update(
+            uri,
+            ContentValues().apply {
+                put(MediaColumns.DATE_ADDED, dateTaken)
+                put(MediaColumns.DATE_TAKEN, dateTaken * 1000)
+
+                if (overwriteLastModified) put(MediaColumns.DATE_MODIFIED, dateTaken)
+            },
+            null
+        )
+    } catch (e: Throwable) {
+        Log.e(TAG, e.toString())
+        e.printStackTrace()
+    }
+}
+
+private fun android.content.ContentResolver.getAbsolutePathFromUri(uri: Uri): String? {
+    query(uri, arrayOf(MediaColumns.DATA), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            return cursor.getString(cursor.getColumnIndexOrThrow(MediaColumns.DATA))
+        }
+    }
+
+    return null
+}

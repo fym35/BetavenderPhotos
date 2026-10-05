@@ -125,6 +125,7 @@ import com.kaii.bphotos.datastore.Editing
 import com.kaii.bphotos.helpers.shareImage
 import com.kaii.bphotos.mediastore.MediaType
 import com.kaii.bphotos.mediastore.copyUriToUri
+import com.kaii.bphotos.mediastore.getMediaStoreDataFromUri
 import com.kaii.bphotos.models.main_activity.MainViewModel
 import com.kaii.bphotos.models.multi_album.DisplayDateFormat
 import com.kaii.bphotos.models.multi_album.formatDate
@@ -152,7 +153,9 @@ class OpenWithView : ComponentActivity() {
         }
 
         val mimeType = contentResolver.getType(uri) ?: "image/*"
-        val isDirectEdit = intent?.action == Intent.ACTION_EDIT && mimeType.contains("image")
+        val isImageDirectEdit = intent?.action == Intent.ACTION_EDIT && mimeType.contains("image")
+        val isVideoDirectEdit = intent?.action == Intent.ACTION_EDIT && mimeType.contains("video")
+        val isDirectEdit = isImageDirectEdit || isVideoDirectEdit
         val internalAbsolutePath =
             if (isDirectEdit && intent?.getBooleanExtra(EXTRA_INTERNAL_EDIT, false) == true) {
                 intent?.getStringExtra(EXTRA_EDIT_ABSOLUTE_PATH)
@@ -286,6 +289,26 @@ class OpenWithView : ComponentActivity() {
                                 isOpenWith = true
                             )
                         }
+
+                        composable<Screens.VideoEditor> {
+                            enableEdgeToEdge(
+                                navigationBarStyle = SystemBarStyle.dark(MaterialTheme.colorScheme.surfaceContainer.toArgb()),
+                                statusBarStyle = SystemBarStyle.auto(
+                                    MaterialTheme.colorScheme.surfaceContainer.toArgb(),
+                                    MaterialTheme.colorScheme.surfaceContainer.toArgb()
+                                )
+                            )
+
+                            val screen: Screens.VideoEditor = it.toRoute()
+
+                            com.kaii.bphotos.compose.single_photo.editing_view.video_editor.VideoEditor(
+                                uri = screen.uri.toUri(),
+                                absolutePath = screen.absolutePath,
+                                albumInfo = null,
+                                window = window,
+                                isFromOpenWithView = true
+                            )
+                        }
                     }
                     }
                 }
@@ -310,6 +333,18 @@ private fun DirectEditContent(
         .collectAsStateWithLifecycle(initialValue = false)
 
     val isInternalRoundTrip = internalAbsolutePath != null
+    val isVideo = mimeType.contains("video")
+
+    if (isVideo) {
+        DirectVideoEditContent(
+            uri = uri,
+            window = window,
+            internalAbsolutePath = internalAbsolutePath,
+            onExit = onExit,
+            onFailure = onFailure
+        )
+        return
+    }
 
     var editTarget by remember {
         mutableStateOf(
@@ -356,6 +391,70 @@ private fun DirectEditContent(
             overwriteByDefault = if (isInternalRoundTrip) overwriteByDefault else false,
             isOpenWith = !isInternalRoundTrip,
             onExit = onExit
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize(1f)
+                .background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+    }
+}
+
+@Composable
+private fun DirectVideoEditContent(
+    uri: Uri,
+    window: Window,
+    internalAbsolutePath: String?,
+    onExit: () -> Unit,
+    onFailure: () -> Unit
+) {
+    val context = LocalContext.current
+
+    var videoTarget by remember {
+        mutableStateOf(
+            if (internalAbsolutePath != null) {
+                Screens.VideoEditor(
+                    absolutePath = internalAbsolutePath,
+                    uri = uri.toString()
+                )
+            } else null
+        )
+    }
+
+    LaunchedEffect(uri) {
+        if (videoTarget != null) return@LaunchedEffect
+
+        val target = withContext(Dispatchers.IO) {
+            createEditableVideoTarget(
+                context = context,
+                sourceUri = uri
+            )
+        }
+
+        if (target != null) videoTarget = target
+        else onFailure()
+    }
+
+    val screen = videoTarget
+    if (screen != null) {
+        (context as ComponentActivity).enableEdgeToEdge(
+            navigationBarStyle = SystemBarStyle.dark(MaterialTheme.colorScheme.surfaceContainer.toArgb()),
+            statusBarStyle = SystemBarStyle.auto(
+                MaterialTheme.colorScheme.surfaceContainer.toArgb(),
+                MaterialTheme.colorScheme.surfaceContainer.toArgb()
+            )
+        )
+
+        com.kaii.bphotos.compose.single_photo.editing_view.video_editor.VideoEditor(
+            uri = screen.uri.toUri(),
+            absolutePath = screen.absolutePath,
+            albumInfo = null,
+            window = window,
+            isFromOpenWithView = true
         )
     } else {
         Box(
@@ -1014,7 +1113,27 @@ private fun BottomBar(
                                     }
                                 }
                             } else {
-                                { showNotImplementedDialog.value = true }
+                                {
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val videoScreen = createEditableVideoTarget(
+                                            context = context,
+                                            sourceUri = uri
+                                        )
+
+                                        if (videoScreen != null) {
+                                            withContext(Dispatchers.Main) {
+                                                setBarVisibility(
+                                                    visible = true,
+                                                    window = window
+                                                ) {
+                                                    appBarsVisible.value = it
+                                                }
+
+                                                navController.navigate(videoScreen)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                     )
                 }
@@ -1062,4 +1181,38 @@ private fun createEditableImageCopy(
         uri = contentUri.toString(),
         dateTaken = currentTime / 1000
     )
+}
+
+private fun createEditableVideoTarget(
+    context: android.content.Context,
+    sourceUri: Uri
+): Screens.VideoEditor? {
+    // Try to resolve the real absolute path so the exporter can derive its destination.
+    // Falls back to a cache copy when the provider gives no usable path.
+    try {
+        val data = context.contentResolver.getMediaStoreDataFromUri(sourceUri)
+        val abs = data?.absolutePath.orEmpty()
+        if (abs.isNotEmpty() && File(abs).exists()) {
+            return Screens.VideoEditor(
+                absolutePath = abs,
+                uri = sourceUri.toString()
+            )
+        }
+    } catch (_: Exception) {}
+
+    return try {
+        val fileName = "edit_${System.currentTimeMillis()}.mp4"
+        val cacheFile = File(context.cacheDir, fileName)
+        context.contentResolver.openInputStream(sourceUri)?.use { input ->
+            cacheFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        } ?: return null
+        Screens.VideoEditor(
+            absolutePath = cacheFile.absolutePath,
+            uri = sourceUri.toString()
+        )
+    } catch (_: Exception) {
+        null
+    }
 }

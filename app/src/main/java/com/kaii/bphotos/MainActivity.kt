@@ -708,6 +708,75 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                composable<Screens.VideoEditor>(
+                    enterTransition = {
+                        slideInVertically(
+                            animationSpec = tween(
+                                durationMillis = 600
+                            )
+                        ) { height -> height } + fadeIn(
+                            animationSpec = tween(
+                                durationMillis = 600
+                            )
+                        )
+                    },
+                    exitTransition = {
+                        slideOutVertically(
+                            animationSpec = tween(
+                                durationMillis = 600
+                            )
+                        ) { height -> height } + fadeOut(
+                            animationSpec = tween(
+                                durationMillis = 600
+                            )
+                        )
+                    },
+                    popEnterTransition = {
+                        slideInVertically(
+                            animationSpec = tween(
+                                durationMillis = 600
+                            )
+                        ) { height -> height } + fadeIn(
+                            animationSpec = tween(
+                                durationMillis = 600
+                            )
+                        )
+                    },
+                    popExitTransition = {
+                        slideOutVertically(
+                            animationSpec = tween(
+                                durationMillis = 600
+                            )
+                        ) { height -> height } + fadeOut(
+                            animationSpec = tween(
+                                durationMillis = 600
+                            )
+                        )
+                    }
+                ) {
+                    enableEdgeToEdge(
+                        navigationBarStyle = SystemBarStyle.dark(MaterialTheme.colorScheme.surfaceContainer.toArgb()),
+                        statusBarStyle = SystemBarStyle.auto(
+                            MaterialTheme.colorScheme.surfaceContainer.toArgb(),
+                            MaterialTheme.colorScheme.surfaceContainer.toArgb()
+                        )
+                    )
+                    setupNextScreen(
+                        selectedItemsList,
+                        window
+                    )
+
+                    val screen: Screens.VideoEditor = it.toRoute()
+
+                    com.kaii.bphotos.compose.single_photo.editing_view.video_editor.VideoEditor(
+                        uri = screen.uri.toUri(),
+                        absolutePath = screen.absolutePath,
+                        albumInfo = null,
+                        window = window,
+                        isFromOpenWithView = false
+                    )
+                }
+
                 composable(MultiScreenViewType.SettingsMainView.name) {
                     enableEdgeToEdge(
                         navigationBarStyle = SystemBarStyle.dark(MaterialTheme.colorScheme.background.toArgb()),

@@ -1,0 +1,187 @@
+package com.kaii.bphotos.helpers.editing
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.roundToIntSize
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.util.lerp
+import kotlin.math.abs
+
+
+interface VideoModification : SharedModification {
+    data class Trim(
+        val start: Float,
+        val end: Float
+    ) : VideoModification
+
+    data class Crop(
+        override val top: Float,
+        override val left: Float,
+        override val width: Float,
+        override val height: Float
+    ) : VideoModification, SharedModification.Crop
+
+    data class Adjustment(
+        val type: MediaAdjustments,
+        val value: Float
+    ) : VideoModification {
+        fun toEffect() =
+            type.getVideoEffect(value)
+    }
+
+    data class Filter(
+        override val type: MediaColorFilters
+    ) : VideoModification, SharedModification.Filter
+
+    data class DrawingPath(
+        override val type: DrawingItems,
+        override val path: DrawablePath,
+        val timespan: Trim? = null
+    ) : VideoModification, SharedModification.DrawingPath
+
+    data class DrawingText(
+        override val type: DrawingItems = DrawingItems.Text,
+        override val text: DrawableText,
+        val keyframes: List<DrawingKeyframe.DrawingTextKeyframe>? = null,
+        val timespan: Trim? = null
+    ) : VideoModification, SharedModification.DrawingText
+
+    data class DrawingImage(
+        override val type: DrawingItems = DrawingItems.Image,
+        override val image: DrawableImage,
+        val keyframes: List<DrawingKeyframe.DrawingImageKeyframe>? = null,
+        val timespan: Trim? = null
+    ) : VideoModification, SharedModification.DrawingImage
+}
+
+
+interface DrawingKeyframe {
+    data class DrawingTextKeyframe(
+        val position: Offset,
+        val strokeWidth: Float,
+        val rotation: Float,
+        val color: Color,
+        val time: Float
+    ) : DrawingKeyframe
+
+    data class DrawingImageKeyframe(
+        val position: Offset,
+        val size: IntSize,
+        val rotation: Float,
+        val time: Float
+    ) : DrawingKeyframe
+}
+
+fun interpolateTextKeyframes(
+    keyframes: List<DrawingKeyframe.DrawingTextKeyframe>,
+    timeMs: Float
+): DrawingKeyframe.DrawingTextKeyframe? {
+    if (keyframes.isEmpty()) {
+        return null
+    }
+
+    val sortedKeyframes = keyframes.sortedBy { it.time }
+
+    if (timeMs <= sortedKeyframes.first().time) {
+        return sortedKeyframes.first()
+    }
+
+    if (timeMs >= sortedKeyframes.last().time) {
+        return sortedKeyframes.last()
+    }
+
+    var i = 0
+    while (i < sortedKeyframes.size - 1) {
+        val keyframe1 = sortedKeyframes[i]
+        val keyframe2 = sortedKeyframes[i + 1]
+
+        if (timeMs >= keyframe1.time && timeMs <= keyframe2.time) {
+            val diff1 = abs(timeMs - keyframe1.time)
+            val diff2 = abs(timeMs - keyframe2.time)
+
+            val t = if (keyframe1.time == keyframe2.time) {
+                0f
+            } else {
+                (timeMs - keyframe1.time) / (keyframe2.time - keyframe1.time)
+            }
+
+            // don't lerp color, only change color when we reach the intended timestamp
+            val color = if (timeMs >= keyframe2.time) keyframe2.color else keyframe1.color
+
+            return if (diff1 <= diff2) {
+                keyframe1.copy(
+                    position = lerp(keyframe1.position, keyframe2.position, t),
+                    rotation = lerp(keyframe1.rotation, keyframe2.rotation, t),
+                    strokeWidth = lerp(keyframe1.strokeWidth, keyframe2.strokeWidth, t),
+                    color = color
+                )
+            } else {
+                keyframe2.copy(
+                    position = lerp(keyframe1.position, keyframe2.position, t),
+                    rotation = lerp(keyframe1.rotation, keyframe2.rotation, t),
+                    strokeWidth = lerp(keyframe1.strokeWidth, keyframe2.strokeWidth, t),
+                    color = color
+                )
+            }
+        }
+        i++
+    }
+
+    return null
+}
+
+fun interpolateImageKeyframes(
+    keyframes: List<DrawingKeyframe.DrawingImageKeyframe>,
+    timeMs: Float
+): DrawingKeyframe.DrawingImageKeyframe? {
+    if (keyframes.isEmpty()) {
+        return null
+    }
+
+    val sortedKeyframes = keyframes.sortedBy { it.time }
+
+    if (timeMs <= sortedKeyframes.first().time) {
+        return sortedKeyframes.first()
+    }
+
+    if (timeMs >= sortedKeyframes.last().time) {
+        return sortedKeyframes.last()
+    }
+
+    var i = 0
+    while (i < sortedKeyframes.size - 1) {
+        val keyframe1 = sortedKeyframes[i]
+        val keyframe2 = sortedKeyframes[i + 1]
+
+        if (timeMs >= keyframe1.time && timeMs <= keyframe2.time) {
+            val diff1 = abs(timeMs - keyframe1.time)
+            val diff2 = abs(timeMs - keyframe2.time)
+
+            val t = if (keyframe1.time == keyframe2.time) {
+                0f
+            } else {
+                (timeMs - keyframe1.time) / (keyframe2.time - keyframe1.time)
+            }
+
+
+            return if (diff1 <= diff2) {
+                keyframe1.copy(
+                    position = lerp(keyframe1.position, keyframe2.position, t),
+                    rotation = lerp(keyframe1.rotation, keyframe2.rotation, t),
+                    size = lerp(keyframe1.size.toSize(), keyframe2.size.toSize(), t).roundToIntSize()
+                )
+            } else {
+                keyframe2.copy(
+                    position = lerp(keyframe1.position, keyframe2.position, t),
+                    rotation = lerp(keyframe1.rotation, keyframe2.rotation, t),
+                    size = lerp(keyframe1.size.toSize(), keyframe2.size.toSize(), t).roundToIntSize()
+                )
+            }
+        }
+        i++
+    }
+
+    return null
+}
