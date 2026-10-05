@@ -2,13 +2,14 @@
 
 This is a continuation of Lavender Photos 0.9.9-beta, the last version with the old UI
 
-It changes a few things compared to that version - that includes
- - An intent to open an external video editor on Video's edit button
-   - No full video editor, sorry :(
- - The same thing for editing Photos, except one of the options is the app's built-in editor
- - A button to Open videos inside an external player
- - Fixes a crash on the Edit button when opening a single media item
- - Shows longer filenames before capping them with "..."
+It fixes/adds a few things that were missing/broken in that version - that includes;
+ - A backport of the video editor (From upstream version 1.4.0, currently)
+ - Fixing a crash on the Edit button when opening a single media item
+ 
+And also adds a few unique Betavender specific features
+ - A toggleable button on all media to open it in an external app
+ - Allows launching external editors right from the Edit button
+ - Displaying longer filenames before capping them with "..."
 
 # Lavender Photos!
 This is Lavender Photos, a no non-sense, smooth, and performant gallery app for Android!
